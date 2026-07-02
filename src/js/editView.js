@@ -788,6 +788,37 @@ function ensureProfileDefinitions(mesgDefinitions) {
     mesgDefinitions.forEach(onMesgDefinition);
 }
 
+// Reorders a message's fields by their Profile field number.
+//
+// This bites swim lengths: editing the stroke of a length that had no
+// swim_stroke field (`{ ...entry, swimStroke }`) appends the key last, while
+// lengths that already carried a stroke keep it earlier. The drill lengths
+// then decode with length_type/swim_stroke shifted (e.g. drill -> backstroke,
+// active -> a stray cadence value). Forcing a canonical field order makes all
+// messages of a type share one consistent definition.
+
+function canonicalizeFields(mesgNum, fields) {
+    const mesgProfile = Profile.messages[mesgNum];
+    if (!mesgProfile) return fields;
+
+    const numByName = {};
+    for (const key in mesgProfile.fields) {
+        const f = mesgProfile.fields[key];
+        numByName[f.name] = f.num;
+    }
+
+    const keys = Object.keys(fields);
+    const known = keys
+          .filter(k => k in numByName)
+          .sort((a, b) => numByName[a] - numByName[b]);
+    const rest = keys.filter(k => !(k in numByName)); // e.g. developerFields
+
+    const ordered = {};
+    for (const k of known) ordered[k] = fields[k];
+    for (const k of rest) ordered[k] = fields[k];
+    return ordered;
+}
+
 // Converts modifiedData into a flat message list for export
 function prepareExportData(modifiedData) {
 
@@ -808,7 +839,9 @@ function prepareExportData(modifiedData) {
     for (const [messageName, messages] of messageGroups) {
         const mesgNum = getMesgNumByMessagesKey(messageName);
         if (mesgNum == null) continue;
-        for (const fields of messages) allMessages.push({ mesgNum, ...fields });
+        for (const fields of messages) {
+            allMessages.push({ mesgNum, ...canonicalizeFields(mesgNum, fields) });
+        }
     }
     return allMessages;
 }
