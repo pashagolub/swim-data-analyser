@@ -111,6 +111,23 @@
                            "/>
                 </svg>
               </button>
+              <button
+                id="toggleRestsBtn"
+                class="icon-btn"
+                title="Hide Rests"
+                aria-label="Hide Rests"
+                >
+                <svg id="toggleRestsIcon"
+                     xmlns="http://www.w3.org/2000/svg"
+                     width="16"
+                     height="16"
+                     fill="currentColor"
+                     viewBox="0 0 16 16">
+                  <rect x="1" y="4" width="3" height="11" rx="0.7"/>
+                  <rect x="6.5" y="10" width="3" height="5" rx="0.7" opacity="0.45"/>
+                  <rect x="12" y="4" width="3" height="11" rx="0.7"/>
+                </svg>
+              </button>
               <button title="Undo All" id="undoBtn" aria-label="Undo all edit operations" class="icon-btn">
                 <!-- arrow-rotate-left icon by Free Icons (https://free-icons.github.io/free-icons/) -->
                 <svg xmlns="http://www.w3.org/2000/svg" height="1em" fill="currentColor" viewBox="0 0 512 512">
@@ -161,6 +178,24 @@
                     <button id="confirmStroke" class="btn">Confirm</button>
                   </div>
                 </div>
+                <!-- Rest Deletion Modal -->
+                <div id="restModal" class="modal" style="display: none;">
+                  <div class="modal-content">
+                    <h4>Delete Rest</h4>
+                    <p>
+                      The rest is removed. Choose what happens to its time.
+                    </p>
+                    <select id="restActionSelect">
+                      <option value="cadence">Give it to the neighbouring lengths (by stroke count)</option>
+                      <option value="even">Give it to the neighbouring lengths (evenly)</option>
+                      <option value="discard">Drop it from the workout</option>
+                    </select>
+                  </div>
+                  <div class="modal-footer">
+                    <button id="cancelRestAction" class="btn">Cancel</button>
+                    <button id="confirmRestAction" class="btn">Confirm</button>
+                  </div>
+                </div>
                 <!-- Pool Size Selection Modal -->
                 <div id="poolSizeModal" class="modal" style="display:none;">
                   <div class="modal-content">
@@ -190,7 +225,7 @@
               </div>
 	      <div id="editDataPlot"></div>
             </div>
-            <p>Select the bars on which one of the editing actions should be performed. The dashed lines indicate the start of a lap (interval).</p>
+            <p>Select the bars on which one of the editing actions should be performed. The dashed lines indicate the start of a lap (interval). Grey bars are rests; deleting one hands its time back to the lengths next to it, which fixes lengths the watch ended too early. Rests can be hidden with the toolbar button.</p>
 	  </div>
 
 	  <!-- Hidden by default (Analyse content) -->
