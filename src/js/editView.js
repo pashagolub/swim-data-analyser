@@ -149,6 +149,7 @@ export async function loadMeta() {
     sessionData.totalTimerTime = activeTime + restTime;
     sessionData.totalMovingTime = activeTime;
     sessionData.numActiveLengths = activeLengths.length;
+    sessionData.numLengths = lengths.length;
     sessionData.totalElapsedTime = sessionData.totalTimerTime;
 
     // Performance metrics excluding drills
