@@ -178,24 +178,6 @@
                     <button id="confirmStroke" class="btn">Confirm</button>
                   </div>
                 </div>
-                <!-- Rest Deletion Modal -->
-                <div id="restModal" class="modal" style="display: none;">
-                  <div class="modal-content">
-                    <h4>Delete Rest</h4>
-                    <p>
-                      The rest is removed. Choose what happens to its time.
-                    </p>
-                    <select id="restActionSelect">
-                      <option value="cadence">Give it to the neighbouring lengths (by stroke count)</option>
-                      <option value="even">Give it to the neighbouring lengths (evenly)</option>
-                      <option value="discard">Drop it from the workout</option>
-                    </select>
-                  </div>
-                  <div class="modal-footer">
-                    <button id="cancelRestAction" class="btn">Cancel</button>
-                    <button id="confirmRestAction" class="btn">Confirm</button>
-                  </div>
-                </div>
                 <!-- Pool Size Selection Modal -->
                 <div id="poolSizeModal" class="modal" style="display:none;">
                   <div class="modal-content">
@@ -225,7 +207,7 @@
               </div>
 	      <div id="editDataPlot"></div>
             </div>
-            <p>Select the bars on which one of the editing actions should be performed. The dashed lines indicate the start of a lap (interval). Grey bars are rests; deleting one hands its time back to the lengths next to it, which fixes lengths the watch ended too early. Rests can be hidden with the toolbar button.</p>
+            <p>Select the bars on which one of the editing actions should be performed. The dashed lines indicate the start of a lap (interval). Grey bars are rests: they can be split, merged into the lengths next to them, or turned into lengths by changing their stroke. Rests can be hidden with the toolbar button.</p>
 	  </div>
 
 	  <!-- Hidden by default (Analyse content) -->

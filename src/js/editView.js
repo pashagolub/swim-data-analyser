@@ -5,9 +5,7 @@ import * as Units from './units.js';
 
 let selectedLabels = [];
 
-// Rest (idle) lengths are drawn as grey bars so they can be selected and
-// edited. Toggled with the "rests" button in the edit toolbar.
-let showRests = true;
+let showRests = true; // draw idle lengths as grey bars
 
 const REST_COLOR = '#C9CCD1';
 
@@ -62,14 +60,9 @@ async function updateLaps() {
         // Because we already reseted index with renumberMessageIndices()
         const startIdx = lap.firstLengthIndex;
 
-        // Find the next lap with numLengths > 0
-        let endIdx = lengths.length; // default if no next valid lap
-        for (let j = i + 1; j < laps.length; j++) {
-            if (laps[j].numLengths > 0) {
-                endIdx = laps[j].firstLengthIndex;
-                break;
-            }
-        }
+        // Ends at the next lap, rest laps included, so their rest isn't counted twice
+        const endIdx = laps.slice(i + 1)
+              .find(l => l.firstLengthIndex != null)?.firstLengthIndex ?? lengths.length;
 
         if (startIdx == null || startIdx < 0 || startIdx >= endIdx) {
             continue;
@@ -78,8 +71,10 @@ async function updateLaps() {
         const slice = lengths.slice(startIdx, endIdx);
         const active = slice.filter(l => l.event === 'length' && l.lengthType === 'active');
 
-        // Skip empty laps (keep them as they are)
+        // Rest laps only carry their rest time
         if (active.length == 0) {
+            lap.totalElapsedTime = sumAttribute('totalElapsedTime', slice);
+            lap.totalTimerTime = sumAttribute('totalTimerTime', slice);
             continue;
         }
 
@@ -317,8 +312,7 @@ export async function renderEditPlot() {
     const lapAnnotations = [];
 
     laps.forEach((lap, i) => {
-        // A lap can start on a rest, which may be hidden, so fall back to the
-        // first drawn length of that lap.
+        // A lap may start on a hidden rest
         const lapStartIndex = lengthData.findIndex(l => l.messageIndex >= lap.firstLengthIndex);
         if (lapStartIndex === -1) return;
 
@@ -350,7 +344,7 @@ export async function renderEditPlot() {
         });
     });
 
-    // Only active lengths get a tick, every other one to keep the axis readable
+    // Tick every other length, rests get none
     const tickvals = [];
     const ticktext = [];
     lengthNumbers.forEach((number, index) => {
@@ -456,25 +450,25 @@ document.getElementById('mergeBtn').addEventListener('click', async function() {
         return;
     }
 
-    // Rests can be part of the selection: their time is absorbed into the
-    // merged length, but the result is always an active length.
+    // Rests in the selection are absorbed into the length; only rests stay a rest
     const activeToMerge = lengthsToMerge.filter(entry => entry.lengthType === 'active');
 
-    if (activeToMerge.length === 0) {
-        alert("Select at least one length (not only rests) to merge.");
-        return;
-    }
-
     // Create a new merged entry based on selected lengths
-    const newEntry = {
-        ...activeToMerge[0],  // Copy all properties from first active entry
-        totalElapsedTime: sumAttribute('totalElapsedTime', lengthsToMerge),
-        totalTimerTime: sumAttribute('totalTimerTime', lengthsToMerge),
-        totalStrokes: sumAttribute('totalStrokes', lengthsToMerge),
-        avgSpeed: modifiedData.sessionMesgs[0].poolLength / sumAttribute('totalTimerTime', lengthsToMerge),
-        avgSwimmingCadence: Math.round(sumAttribute('totalStrokes', lengthsToMerge) / (sumAttribute('totalTimerTime', lengthsToMerge)/60), 0),
-        messageIndex: Math.min(...lengthsToMerge.map(entry => entry.messageIndex)),
-    };
+    const newEntry = activeToMerge.length === 0
+          ? {
+              ...lengthsToMerge[0],
+              totalElapsedTime: sumAttribute('totalElapsedTime', lengthsToMerge),
+              totalTimerTime: sumAttribute('totalTimerTime', lengthsToMerge),
+          }
+          : {
+              ...activeToMerge[0],  // Copy all properties from first length
+              totalElapsedTime: sumAttribute('totalElapsedTime', lengthsToMerge),
+              totalTimerTime: sumAttribute('totalTimerTime', lengthsToMerge),
+              totalStrokes: sumAttribute('totalStrokes', lengthsToMerge),
+              avgSpeed: modifiedData.sessionMesgs[0].poolLength / sumAttribute('totalTimerTime', lengthsToMerge),
+              avgSwimmingCadence: Math.round(sumAttribute('totalStrokes', lengthsToMerge) / (sumAttribute('totalTimerTime', lengthsToMerge)/60), 0),
+              messageIndex: Math.min(...lengthsToMerge.map(entry => entry.messageIndex)),
+          };
     const toRemove = selectedLabels.slice(1);
 
     // Filter out the merged lengths from the data based on messageIndex and keep the first entry
@@ -542,14 +536,8 @@ document.getElementById('confirmSplits').addEventListener('click', async functio
 
     // Get the entry to be split
     const entryToSplit = modifiedData.lengthMesgs[lengthToSplitIndex];
-
-    if (entryToSplit.lengthType === 'idle') {
-        alert("Rests can't be split. Delete the rest to give its time back to the neighbouring lengths.");
-        document.getElementById('numberOfSplitsModal').style.display = 'none';
-        return;
-    }
-
-    const newStrokes = Math.floor(entryToSplit.totalStrokes / nSplit);
+    const isRest = entryToSplit.lengthType === 'idle';
+    const strokes = entryToSplit.totalStrokes || 0;
     const newTimerTime = entryToSplit.totalTimerTime / nSplit;
     const poolLength = modifiedData.sessionMesgs[0].poolLength;
 
@@ -559,13 +547,23 @@ document.getElementById('confirmSplits').addEventListener('click', async functio
     for (let i = 0; i < nSplit; i++) {
         const splitEntry = {
             ...entryToSplit,
-            avgSpeed: poolLength / newTimerTime,
-            avgSwimmingCadence: Math.round(newStrokes / (newTimerTime/60), 0),
             totalElapsedTime: entryToSplit.totalElapsedTime / nSplit,
             totalTimerTime: newTimerTime,
-            totalStrokes: newStrokes,
-            totalCalories: entryToSplit.totalCalories / nSplit,
         };
+
+        if (!isRest) {
+            // Hand out the remainder so no stroke gets lost
+            const newStrokes = Math.floor(strokes / nSplit) + (i < strokes % nSplit ? 1 : 0);
+            Object.assign(splitEntry, {
+                avgSpeed: poolLength / newTimerTime,
+                avgSwimmingCadence: Math.round(newStrokes / (newTimerTime/60), 0),
+                totalStrokes: newStrokes,
+            });
+        }
+
+        if (entryToSplit.totalCalories != null) {
+            splitEntry.totalCalories = entryToSplit.totalCalories / nSplit;
+        }
 
         splitEntries.push(splitEntry);
     }
@@ -589,76 +587,8 @@ document.getElementById('confirmSplits').addEventListener('click', async functio
     renderEditPlot();
 });
 
-// FIT stores times with a scale of 1000, so keep the reclaimed values there
-function roundTime(seconds) {
-    return Math.round(seconds * 1000) / 1000;
-}
-
-function refreshLengthMetrics(entry, poolLength) {
-    entry.avgSpeed = entry.totalTimerTime > 0 ? poolLength / entry.totalTimerTime : 0;
-    entry.avgSwimmingCadence = entry.totalTimerTime > 0
-        ? Math.round((entry.totalStrokes || 0) / (entry.totalTimerTime / 60))
-        : 0;
-}
-
-// Gives a rest's time back to the active lengths around it, for the case where
-// the watch ended a length early and logged rest while the swimmer kept going.
-//
-// 'cadence' pools the two neighbours and the rest and re-splits that pool by
-// stroke count, which leaves both lengths at the same cadence — usually the
-// physically sensible reading. 'even' just halves the rest between them.
-// A rest at the very start or end of the workout has a single neighbour, which
-// then takes all of the time.
-function reclaimRest(lengths, restPosition, mode, poolLength) {
-    const rest = lengths[restPosition];
-
-    const findActive = (from, step) => {
-        for (let i = from; i >= 0 && i < lengths.length; i += step) {
-            if (lengths[i].lengthType === 'active') return lengths[i];
-        }
-        return null;
-    };
-
-    const neighbours = [
-        findActive(restPosition - 1, -1),
-        findActive(restPosition + 1, 1)
-    ].filter(Boolean);
-
-    if (neighbours.length === 0) {
-        return; // nothing to reclaim into, the rest is simply dropped
-    }
-
-    const strokes = neighbours.map(l => l.totalStrokes || 0);
-    const strokeSum = strokes.reduce((sum, s) => sum + s, 0);
-    // Without strokes on every neighbour a proportional split would hand one of
-    // them a zero-second length, so fall back to an even split.
-    const byStrokes = mode === 'cadence' && strokes.every(s => s > 0);
-
-    ['totalElapsedTime', 'totalTimerTime'].forEach(field => {
-        const restTime = rest[field] || 0;
-
-        if (byStrokes) {
-            const pool = neighbours.reduce((sum, l) => sum + (l[field] || 0), 0) + restTime;
-            neighbours.forEach((l, i) => {
-                l[field] = roundTime(pool * strokes[i] / strokeSum);
-            });
-        } else {
-            const share = restTime / neighbours.length;
-            neighbours.forEach(l => {
-                l[field] = roundTime((l[field] || 0) + share);
-            });
-        }
-    });
-
-    neighbours.forEach(l => refreshLengthMetrics(l, poolLength));
-}
-
-// Removes lap records that no longer cover any length. Rests between intervals
-// carry a lap of their own (numLengths 0), which would otherwise keep its rest
-// time in the export after the rest itself is gone.
-//
-// Runs on the length list before renumberMessageIndices(), so lap indices and
-// length messageIndices are still on the same (old) numbering.
+// Drops laps left without lengths, e.g. the lap a deleted rest had to itself.
+// Call before renumberMessageIndices(), while indices are still the old ones.
 function dropEmptyLaps(modifiedData) {
     const laps = modifiedData.lapMesgs;
     const lengths = modifiedData.lengthMesgs;
@@ -676,8 +606,7 @@ function dropEmptyLaps(modifiedData) {
 
         if (covered.length === 0) return false;
 
-        // The record the lap started on may have been removed
-        lap.firstLengthIndex = covered[0].messageIndex;
+        lap.firstLengthIndex = covered[0].messageIndex; // its first length may be gone
         return true;
     });
 
@@ -693,27 +622,19 @@ function dropEmptyLaps(modifiedData) {
     }
 }
 
-async function deleteSelectedLengths(restMode) {
-    const modifiedData = await getItem('modifiedData');
+document.getElementById('deleteBtn').addEventListener('click', async function() {
 
-    if (!modifiedData || !modifiedData.lengthMesgs) {
-        console.error("No 'modifiedData' found in IndexedDB.");
+    // Ensure at least one label is selected for deletion
+    if (selectedLabels.length < 1) {
+        alert("Select at least one length to delete.");
         return;
     }
 
-    const lengths = modifiedData.lengthMesgs;
-    const poolLength = modifiedData.sessionMesgs?.[0]?.poolLength ?? 25;
-
-    if (restMode !== 'discard') {
-        lengths.forEach((entry, position) => {
-            if (selectedLabels.includes(entry.messageIndex) && entry.lengthType === 'idle') {
-                reclaimRest(lengths, position, restMode, poolLength);
-            }
-        });
-    }
+    // Get the current modified data from IndexedDB
+    let modifiedData = await getItem('modifiedData');
 
     // Filter to only keep the 'length' entries where the messageIndex is not in selectedLabels
-    const remainingLengths = lengths.filter(entry => !selectedLabels.includes(entry.messageIndex));
+    const remainingLengths = modifiedData.lengthMesgs.filter(entry => !selectedLabels.includes(entry.messageIndex));
     modifiedData.lengthMesgs = remainingLengths;
 
     // Update the modified data with the new length data
@@ -728,50 +649,6 @@ async function deleteSelectedLengths(restMode) {
 
     // Render the updated plot
     renderEditPlot();
-}
-
-document.getElementById('deleteBtn').addEventListener('click', async function() {
-
-    // Ensure at least one label is selected for deletion
-    if (selectedLabels.length < 1) {
-        alert("Select at least one length to delete.");
-        return;
-    }
-
-    const modifiedData = await getItem('modifiedData');
-
-    if (!modifiedData || !modifiedData.lengthMesgs) {
-        console.error("No 'modifiedData' found in IndexedDB.");
-        return;
-    }
-
-    const selected = modifiedData.lengthMesgs.filter(entry =>
-        selectedLabels.includes(entry.messageIndex)
-    );
-    const rests = selected.filter(entry => entry.lengthType === 'idle');
-
-    if (rests.length === 0) {
-        await deleteSelectedLengths('discard');
-        return;
-    }
-
-    if (rests.length !== selected.length) {
-        alert("Select either lengths or rests, not both.");
-        return;
-    }
-
-    // Deleting a rest has to say what happens to its time
-    document.getElementById('restModal').style.display = 'block';
-});
-
-document.getElementById('cancelRestAction').addEventListener('click', function() {
-    document.getElementById('restModal').style.display = 'none';
-});
-
-document.getElementById('confirmRestAction').addEventListener('click', async function() {
-    const mode = document.getElementById('restActionSelect').value;
-    document.getElementById('restModal').style.display = 'none';
-    await deleteSelectedLengths(mode);
 });
 
 // Confirm button inside the modal
@@ -791,13 +668,25 @@ document.getElementById('confirmStroke').addEventListener('click', async functio
         return;
     }
 
+    const poolLength = modifiedData.sessionMesgs[0].poolLength;
+
     // Update swim_stroke for lengths where messageIndex is in selectedLabels
-    // (rests have no stroke, so they are left alone)
     modifiedData.lengthMesgs = modifiedData.lengthMesgs.map(entry => {
-        if (selectedLabels.includes(entry.messageIndex) && entry.lengthType !== 'idle') {
-            return { ...entry, swimStroke: selectedStroke };  // Update stroke
+        if (!selectedLabels.includes(entry.messageIndex)) {
+            return entry;  // No changes if messageIndex not in selectedLabels
         }
-        return entry;  // No changes if messageIndex not in selectedLabels
+        if (entry.lengthType === 'idle') {
+            // A rest becomes a length the watch missed
+            return {
+                ...entry,
+                lengthType: 'active',
+                swimStroke: selectedStroke,
+                totalStrokes: 0,
+                avgSpeed: entry.totalTimerTime > 0 ? poolLength / entry.totalTimerTime : 0,
+                avgSwimmingCadence: 0,
+            };
+        }
+        return { ...entry, swimStroke: selectedStroke };  // Update stroke
     });
 
     // Save the updated data back to IndexedDB
@@ -910,7 +799,7 @@ document.getElementById('toggleRestsBtn').addEventListener('click', async () => 
     showRests = !showRests;
 
     if (!showRests) {
-        // Don't keep hidden bars selected, they can't be unselected by clicking
+        // Hidden bars can't be unselected
         const data = await getItem('modifiedData');
         const restIndices = (data?.lengthMesgs ?? [])
               .filter(l => l.lengthType === 'idle')
