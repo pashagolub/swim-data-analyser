@@ -5,9 +5,7 @@ import * as Units from './units.js';
 
 let selectedLabels = [];
 
-let showRests = true; // draw idle lengths as grey bars
-
-const REST_COLOR = '#C9CCD1';
+let showRests = false; // draw idle lengths as grey bars
 
 // Helper function for formatting seconds to minute:sec
 function formatTime(seconds){
@@ -287,6 +285,7 @@ export async function renderEditPlot() {
         drill: '#fde725',
         default: '#fde725'
     };
+    const REST_COLOR = '#C9CCD1';
 
     const lengths = data.lengthMesgs;
     const laps = data.lapMesgs.filter(d => d.numActiveLengths > 0);
@@ -674,6 +673,12 @@ document.getElementById('confirmStroke').addEventListener('click', async functio
     modifiedData.lengthMesgs = modifiedData.lengthMesgs.map(entry => {
         if (!selectedLabels.includes(entry.messageIndex)) {
             return entry;  // No changes if messageIndex not in selectedLabels
+        }
+        if (selectedStroke === 'idle') {
+            // A length becomes a rest
+            if (entry.lengthType === 'idle') return entry;
+            const { swimStroke, ...rest } = entry;
+            return { ...rest, lengthType: 'idle', totalStrokes: 0, avgSwimmingCadence: 0, avgSpeed: 0 };
         }
         if (entry.lengthType === 'idle') {
             // A rest becomes a length the watch missed
