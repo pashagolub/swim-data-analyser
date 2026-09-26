@@ -819,8 +819,9 @@ document.getElementById('selectAllBtn').addEventListener('click', async () => {
     const data = await getItem('modifiedData');
     if (!data || !data.lengthMesgs) return;
 
-    const lengthData = data.lengthMesgs.filter(
-        d => d.event === 'length' && d.lengthType === 'active'
+    const lengthData = data.lengthMesgs.filter(d =>
+        d.event === 'length' &&
+        (d.lengthType === 'active' || (showRests && d.lengthType === 'idle'))
     );
 
     const allIds = lengthData.map(l => l.messageIndex);
